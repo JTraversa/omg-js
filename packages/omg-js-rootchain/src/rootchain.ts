@@ -13,61 +13,81 @@ WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
 See the License for the specific language governing permissions and
 limitations under the License. */
 
-const txUtils = require('./txUtils')
-const { transaction } = require('@omisego/omg-js-util')
-const webUtils = require('web3-utils')
-const erc20abi = require('human-standard-token-abi')
+import txUtils from './txUtils'
+import { transaction } from '@omisego/omg-js-util'
+import { toHex } from 'web3-utils'
+import erc20abi from 'human-standard-token-abi'
 
-const ETH_VAULT_ID = 1
-const ERC20_VAULT_ID = 2
-const PAYMENT_TYPE = 1
+import erc20VaultAbi from './contracts/Erc20Vault.json'
+import ethVaultAbi from './contracts/EthVault.json'
+import paymentExitGameAbi from './contracts/PaymentExitGame.json'
+import plasmaFrameworkAbi from './contracts/PlasmaFramework.json'
 
-class RootChain {
+import { TransactionReceipt, TransactionOptions } from './txUtils';
+
+const ETH_VAULT_ID: number = 1
+const ERC20_VAULT_ID: number = 2
+const PAYMENT_TYPE: number = 1
+
+interface ContractType {
+  address: string,
+  contract: any
+  bonds?: {
+    standardExit: number,
+    piggyback: number,
+    inflightExit: number
+  }
+}
+
+interface RootChainConfig {
+  web3: any,
+  plasmaContractAddress: string
+}
+
+export default class RootChain {
+  private web3: any
+  private plasmaContractAddress: string
+  private plasmaContract: any
+  private erc20Vault: ContractType
+  private ethVault: ContractType
+  private paymentExitGame: ContractType
+
   /**
   * Create a RootChain object
   *
   * @param {string} web3 the web3 object to access the Ethereum network
   * @param {string} plasmaContractAddress the address of the RootChain contract
-  * @param {string} plasmaAbi the abi of the RootChain contract. If not set the default abi included in './contracts/Rootchain' will be used.
   * @return {Object} a Rootchain object
   *
   */
-  constructor ({ web3, plasmaContractAddress, plasmaAbi }) {
+  constructor ({ web3, plasmaContractAddress }: RootChainConfig) {
     this.web3 = web3
     this.plasmaContractAddress = plasmaContractAddress
-    this.isLegacyWeb3 = web3.version.api && web3.version.api.startsWith('0.2')
-    // contracts abi
-    this.erc20VaultAbi = require('./contracts/Erc20Vault.json')
-    this.ethVaultAbi = require('./contracts/EthVault.json')
-    this.exitGameRegistryAbi = require('./contracts/ExitGameRegistry.json')
-    this.paymentExitGameAbi = require('./contracts/PaymentExitGame.json')
-    this.plasmaFrameworkAbi = plasmaAbi || require('./contracts/PlasmaFramework.json')
-
-    this.plasmaContract = this.getContract(this.plasmaFrameworkAbi.abi, plasmaContractAddress)
+    this.plasmaContract = getContract(web3, plasmaFrameworkAbi.abi, plasmaContractAddress)
   }
 
-  async getErc20Vault () {
+  private async getErc20Vault (): Promise<ContractType> {
     if (!this.erc20Vault) {
       const address = await this.plasmaContract.methods.vaults(ERC20_VAULT_ID).call()
-      const contract = this.getContract(this.erc20VaultAbi.abi, address)
+      const contract = getContract(this.web3, erc20VaultAbi.abi, address)
       this.erc20Vault = { contract, address }
     }
     return this.erc20Vault
   }
 
-  async getEthVault () {
+  private async getEthVault (): Promise<ContractType> {
     if (!this.ethVault) {
       const address = await this.plasmaContract.methods.vaults(ETH_VAULT_ID).call()
-      const contract = this.getContract(this.ethVaultAbi.abi, address)
+      const contract = getContract(this.web3, ethVaultAbi.abi, address)
       this.ethVault = { contract, address }
     }
     return this.ethVault
   }
 
-  async getPaymentExitGame () {
+  private async getPaymentExitGame (): Promise<ContractType> {
     if (!this.paymentExitGame) {
       const address = await this.plasmaContract.methods.exitGames(PAYMENT_TYPE).call()
-      const contract = this.getContract(this.paymentExitGameAbi.abi, address)
+      const contract = getContract(this.web3, paymentExitGameAbi.abi, address)
 
       const bondSizes = await Promise.all([
         contract.methods.startStandardExitBondSize().call(),
@@ -88,13 +108,6 @@ class RootChain {
     return this.paymentExitGame
   }
 
-  getContract (abi, address) {
-    if (this.isLegacyWeb3) {
-      return this.web3.eth.contract(abi).at(address)
-    }
-    return new this.web3.eth.Contract(abi, address)
-  }
-
   /**
    * Approve ERC20 for deposit
    *
@@ -104,13 +117,13 @@ class RootChain {
    * @param {Object} txOptions transaction options, such as `from`, `gas` and `privateKey`
    * @return {Promise<{ transactionHash: string }>} promise that resolves with an object holding the transaction hash
    */
-  async approveToken ({
+  public async approveToken ({
     erc20Address,
     amount,
     txOptions
-  }) {
+  }: { erc20Address: string, amount: number, txOptions: TransactionOptions }): Promise<TransactionReceipt> {
     const { address: spender } = await this.getErc20Vault()
-    const erc20Contract = this.getContract(erc20abi, erc20Address)
+    const erc20Contract = getContract(this.web3, erc20abi, erc20Address)
     const txDetails = {
       from: txOptions.from,
       to: erc20Address,
@@ -140,7 +153,7 @@ class RootChain {
     const txDetails = {
       from: txOptions.from,
       to: address,
-      value: webUtils.toHex(amount),
+      value: toHex(amount),
       data: txUtils.getTxData(
         this.web3,
         contract,
@@ -705,4 +718,10 @@ class RootChain {
   }
 }
 
-module.exports = RootChain
+function getContract (web3: any, abi: string, address: string): any {
+  const isLegacyWeb3: boolean = web3.version.api && web3.version.api.startsWith('0.2')
+  if (isLegacyWeb3) {
+    return web3.eth.contract(abi).at(address)
+  }
+  return new web3.eth.Contract(abi, address)
+}

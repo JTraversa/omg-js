@@ -1,5 +1,26 @@
 const { ethErrorReason } = require('@omisego/omg-js-util')
 
+interface SendTxInterface {
+  readonly web3: any,
+  txDetails: TransactionOptions,
+  readonly privateKey?: string,
+  callbacks?: {
+    onReceipt: (receipt: object) => void,
+    onConfirmation: (confirmation: object) => void
+  }
+}
+
+export interface TransactionOptions {
+  readonly from: string,
+  gas?: number,
+  gasPrice?: string,
+  privateKey?: string
+}
+
+export interface TransactionReceipt {
+  transactionHash: string
+}
+
 /**
  * Send transaction using web3
  *
@@ -11,7 +32,7 @@ const { ethErrorReason } = require('@omisego/omg-js-util')
  * @param {{ onReceipt: any, onConfirmation: any }} [callbacks] callbacks to use during transaction lifecycle
  * @return {Promise<{ transactionHash: string }>} promise that resolves with the transaction hash
  */
-async function sendTx ({ web3, txDetails, privateKey, callbacks }) {
+async function sendTx ({ web3, txDetails, privateKey, callbacks }: SendTxInterface): Promise<TransactionReceipt> {
   await setGas(web3, txDetails)
   if (!privateKey) {
     // No privateKey, caller will handle signing if necessary
@@ -122,7 +143,7 @@ function prefixHex (hexString) {
   return hexString.startsWith('0x') ? hexString : `0x${hexString}`
 }
 
-module.exports = {
+export default {
   sendTx,
   setGas,
   getTxData,

@@ -2,8 +2,8 @@ node_modules
 *.log
 .env
 
-# VS Code directories
 .vscode
+packages/*/lib
 
 .idea
 

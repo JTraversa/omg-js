@@ -7,7 +7,18 @@
     "OmiseGo",
     "Plasma"
   ],
-  "main": "src/rootchain.js",
+  "main": "lib/rootchain.js",
+  "typings": "lib/rootchain.d.ts",
+  "directories": {
+    "lib": "lib",
+    "test": "test"
+  },
+  "files": [
+    "lib"
+  ],
+  "scripts": {
+    "tsc": "tsc"
+  },
   "author": "OmiseGo",
   "contributors": [
     "Pong Cheecharern <pong@omise.co>",
